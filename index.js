@@ -72,6 +72,10 @@ function handleState() {
     }
 }
 
+function windowResized() {
+    resizeCanvas(windowWidth, windowHeight);
+}
+
 function backgroundColorChange(vol, volAmped) {
     if (vol < Threshold.value1) vol -= Threshold.value1 / 10;
     if (volCountdown > 0) volCountdown -= 1;
