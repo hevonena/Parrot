@@ -1,137 +1,174 @@
-// Declare variables
-let mic, recorder
-let soundFiles = [];
-let temperature;
-let t1 = 0.008;
-let t2 = 0.003;
-let extraTime = 400;
-let hasRecording = false;
-let isFullScreen = false;
-let r, g, b;
-let pvol = 0;
-let volCountdown = 0;
-let delay;
-let state;
-let sound;
-let soundIndex = 0;
+const Color = {
+    red: 0,
+    green: 0,
+    blue: 0,
+    changeRate: 1,
 
-
-// Handle user input for toggling full screen mode
-function mousePressed() {
-    if (mouseX > 0 && mouseX < windowWidth && mouseY > 0 && mouseY < windowHeight) {
-        let fs = fullscreen();
-        fullscreen(!fs);
+    updateColor: function () {
+        this.red = random(255);
+        this.green = random(255);
+        this.blue = random(255);
     }
-}
+};
 
+const Threshold = {
+    value1: 0.008,
+    value2: 0.003,
+
+    updateThreshold: function (value) {
+        this.value1 += value;
+        this.value2 += value;
+        this.value1 = constrain(this.value1, 0.001, 0.1);
+        this.value2 = constrain(this.value2, 0.001, 0.1);
+    }
+};
+
+let mic, recorder, delay, state, sound, soundFiles = [], soundIndex = 0, hasRecording = false, temperature, extraTime, volCountdown = 0;
+let reverb, dist, highpass;
 
 function setup() {
-    // Set up canvas
     createCanvas(windowWidth, windowHeight);
-
-    // Initialize microphone input
-    mic = new p5.AudioIn();
-    mic.start();
-
-    // Initialize delay effect
-    delay = new p5.Delay();
-
-    // Initialize sound recorder
-    recorder = new p5.SoundRecorder();
-    recorder.setInput(mic);
-
-    temperature = random(400, 2000);
-
-    // Initialize background color
-    r = random(255);
-    g = random(255);
-    b = random(255);
-
+    initializeAudio();
+    initializeColor();
     state = 0;
 }
 
 function draw() {
-    switchState();
+    handleState();
 }
 
-function switchState() {
+function initializeAudio() {
+    mic = new p5.AudioIn();
+    mic.start();
+
+    delay = new p5.Delay();
+    reverb = new p5.Reverb();
+    dist = new p5.Distortion();
+    highpass = new p5.HighPass();
+
+    recorder = new p5.SoundRecorder();
+    recorder.setInput(mic);
+
+    temperature = random(400, 2000);
+}
+
+function initializeColor() {
+    Color.updateColor();
+}
+
+function handleState() {
     let vol = mic.getLevel();
-    let volSmooth = 60 * smoothy(vol, pvol, 0.9999);
-    pvol = mic.getLevel();
-    bgReact(vol, volSmooth);
+    let volAmped = 60 * vol;
+    backgroundColorChange(vol, volAmped);
 
     switch (state) {
-        case 0: // passive
-            if (vol > t1) {
-                state = 4;
-            } else if (hasRecording && extraTime < 0) {
-                state = 6;
-            }
-            extraTime -= 5;
-            break;
-        case 1: // recording
-            if (vol < t2) {
-                hasRecording = true;
-                state = 5;
-            }
-            break;
-        case 2: // replaying
-            soundIndex = floor(random(soundFiles.length));
-            sound = soundFiles[soundIndex];
-
-            if (random(1) < 0.5) {
-                // Apply delay effect to
-                delay.process(sound, random(0.1, 0.5), 0.5, 1000);
-                delay.setType('pingPong'); // a stereo effect
-            }
-            if (!sound.isPlaying()) {
-                sound.play();
-                state = 7;
-            }
-
-            break;
-        case 3:
-            break;
-        case 4: // from passive to recording
-            soundFiles.push(new p5.SoundFile());
-            recorder.record(soundFiles[soundFiles.length - 1]);
-            state = 1;
-            break;
-        case 5: // from recording to passive
-            recorder.stop();
-            extraTime = random(temperature, 2 * temperature);
-            state = 0;
-            break;
-        case 6: // from passive to replaying
-            state = 2;
-            break;
-        case 7: // from replaying to passive
-            if (!sound.isPlaying()) {
-                extraTime = random(temperature, 2 * temperature);
-                volCountdown = random(10, 200);
-                state = 0;
-            }
-            break;
+        case 0: handlePassiveState(vol); break;
+        case 1: handleRecordingState(vol); break;
+        case 2: handleReplayingState(); break;
+        case 4: startRecording(); break;
+        case 5: stopRecording(); break;
+        case 6: startReplaying(); break;
+        case 7: stopReplaying(); break;
     }
 }
 
-function bgReact(vol, volSmooth) {
-    if (vol < t1) {
-        vol -= t1 / 10;
-    }
-    if (volCountdown > 0) {
-        volCountdown -= 1;
-    }
-    background(constrain(volSmooth * r + volCountdown, 0, 255),
-        constrain(volSmooth * g + volCountdown, 0, 255),
-        constrain(volSmooth * b + volCountdown, 0, 255));
+function backgroundColorChange(vol, volAmped) {
+    if (vol < Threshold.value1) vol -= Threshold.value1 / 10;
+    if (volCountdown > 0) volCountdown -= 1;
+
+    volAmped *= Color.changeRate;
+
+    background(
+        constrain(volAmped * Color.red + map(volCountdown * Color.red, 0, 200 * Color.red, 0, Color.red), 0, 255),
+        constrain(volAmped * Color.green + map(volCountdown * Color.green, 0, 200 * Color.green, 0, Color.green), 0, 255),
+        constrain(volAmped * Color.blue + map(volCountdown * Color.blue, 0, 200 * Color.blue, 0, Color.blue), 0, 255)
+    );
 }
 
-// P5JS windowResized
 function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
 }
 
-function smoothy(value, previousValue, alpha) {
-    return alpha * value + (1 - alpha) * previousValue;
+function handlePassiveState(vol) {
+    if (vol > Threshold.value1) {
+        state = 4;
+    } else if (hasRecording && extraTime < 0) {
+        state = 6;
+    }
+    extraTime -= 5;
+}
+
+function handleRecordingState(vol) {
+    if (vol < Threshold.value2) {
+        hasRecording = true;
+        state = 5;
+    }
+}
+
+function handleReplayingState() {
+    soundIndex = floor(random(soundFiles.length));
+    sound = soundFiles[soundIndex];
+
+    applyRandomEffectsToSound();
+
+    if (!sound.isPlaying()) {
+        sound.play();
+        state = 7;
+    }
+}
+
+function startRecording() {
+    soundFiles.push(new p5.SoundFile());
+    recorder.record(soundFiles[soundFiles.length - 1]);
+    state = 1;
+}
+
+function stopRecording() {
+    recorder.stop();
+    extraTime = random(temperature, 2 * temperature);
+    state = 0;
+}
+
+function startReplaying() {
+    state = 2;
+}
+
+function stopReplaying() {
+    if (!sound.isPlaying()) {
+        extraTime = random(temperature, 2 * temperature);
+        volCountdown = random(10, 200);
+        state = 0;
+    }
+}
+
+function applyRandomEffectsToSound() {
+    if (random(1) < 0.5) {
+        delay.process(sound, random(0.1, 0.5), 0.5, 1000);
+        delay.setType('pingPong');
+    }
+
+    let dryWet = random(0, 1);
+    delay.drywet(dryWet);
+    reverb.drywet(dryWet);
+    dist.set(random(0, 1));
+
+    if (random(1) < 0.5) {
+        reverb.process(sound, random(2, 5), random(0, 1));
+    }
+
+    if (random(1) < 0.5) {
+        highpass.freq(random(100, 1000));
+    }
+}
+
+function keyPressed() {
+    switch (keyCode) {
+        case LEFT_ARROW: Threshold.updateThreshold(-0.001); break;
+        case RIGHT_ARROW: Threshold.updateThreshold(0.001); break;
+        case UP_ARROW: Color.changeRate += 0.1; break;
+        case DOWN_ARROW: Color.changeRate -= 0.1; break;
+    }
+
+    Color.changeRate = constrain(Color.changeRate, 0.1, 5);
+    console.log("t1: " + Threshold.value1, "t2: " + Threshold.value2, "colorChangeRate: " + Color.changeRate);
 }
