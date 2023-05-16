@@ -89,12 +89,6 @@ function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
 }
 
-function mousePressed() {
-    if (mouseX > 0 && mouseX < windowWidth && mouseY > 0 && mouseY < windowHeight) {
-        fullscreen(!fullscreen());
-    }
-}
-
 function handlePassiveState(vol) {
     if (vol > Threshold.value1) {
         state = 4;
@@ -177,4 +171,9 @@ function keyPressed() {
 
     Color.changeRate = constrain(Color.changeRate, 0.1, 5);
     console.log("t1: " + Threshold.value1, "t2: " + Threshold.value2, "colorChangeRate: " + Color.changeRate);
+}
+
+function mousePressed() {
+    let fs = fullscreen();
+    fullscreen(!fs);
 }
