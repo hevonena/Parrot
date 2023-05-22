@@ -99,6 +99,8 @@ function handlePassiveState(vol) {
 }
 
 function handleRecordingState(vol) {
+    fill(255, 0, 0);
+    circle(width/2, 20, 8);
     if (vol < Threshold.value2) {
         hasRecording = true;
         state = 5;
